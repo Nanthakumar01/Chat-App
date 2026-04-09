@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import React, { useState } from "react";
 import { auth } from "./firebase";
 
@@ -86,6 +87,20 @@ function ChatMessage({ message, onEdit, onDelete }) {
           <button onClick={handleDelete} className="action-btn" title="Delete">🗑️</button>
         </div>
       )}
+=======
+import React from "react";
+import { auth } from "./firebase.jsx";
+
+function ChatMessage({ message }) {
+  const { text, uid, photoURL } = message;
+
+  const messageClass = uid === auth.currentUser.uid ? "sent" : "received";
+
+  return (
+    <div className={`message ${messageClass}`}>
+      <img src={photoURL} alt="avatar" />
+      <p>{text}</p>
+>>>>>>> b9efca0cd39f78ddf6610862c4e8c8eb331ec81d
     </div>
   );
 }
