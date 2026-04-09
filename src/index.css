@@ -21,7 +21,7 @@ body {
   width: 100%;
 }
 
-/* Header - Mobile Friendly */
+/* Header */
 .header {
   background: rgba(15, 25, 45, 0.75);
   backdrop-filter: blur(16px);
@@ -58,6 +58,24 @@ body {
   transition: all 0.2s;
 }
 
+/* Profile Button */
+.profile-button {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  padding: 0.4rem 0.8rem;
+  border-radius: 40px;
+  font-weight: 500;
+  font-size: 0.7rem;
+  cursor: pointer;
+  margin-right: 0.5rem;
+  transition: all 0.2s;
+}
+
+.profile-button:hover {
+  background: rgba(167, 139, 250, 0.4);
+}
+
 .main-content {
   margin-top: 60px;
   flex: 1;
@@ -66,7 +84,6 @@ body {
   overflow: hidden;
 }
 
-/* Chat Layout - Responsive */
 .chat-layout {
   display: flex;
   flex: 1;
@@ -74,12 +91,25 @@ body {
   gap: 0;
   background: rgba(20, 20, 40, 0.5);
   backdrop-filter: blur(12px);
+  position: relative;
 }
 
-/* Users Sidebar - Mobile Responsive */
+/* Sidebar Overlay for Mobile */
+.sidebar-overlay {
+  position: fixed;
+  top: 60px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  backdrop-filter: blur(4px);
+}
+
+/* Users Sidebar */
 .users-sidebar {
   width: 280px;
-  background: rgba(15, 20, 35, 0.8);
+  background: rgba(15, 20, 35, 0.95);
   border-right: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
@@ -90,11 +120,66 @@ body {
 .users-header {
   padding: 1rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .users-header h3 {
   font-size: 1rem;
   font-weight: 600;
+}
+
+/* Current User Profile in Sidebar */
+.current-user-profile {
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(167, 139, 250, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.current-user-profile img {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+}
+
+.current-user-info {
+  flex: 1;
+}
+
+.current-user-info .name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.current-user-info .email {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+
+.edit-profile-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: white;
+  padding: 0.3rem 0.7rem;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+.close-sidebar {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1rem;
+  display: none;
 }
 
 .users-list {
@@ -146,6 +231,76 @@ body {
   opacity: 0.7;
 }
 
+/* Edit Profile Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edit-profile-modal {
+  background: rgba(20, 20, 45, 0.95);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  padding: 1.5rem;
+  width: 90%;
+  max-width: 350px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.edit-profile-modal h3 {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.edit-profile-modal input {
+  width: 100%;
+  padding: 0.8rem;
+  margin-bottom: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 0.9rem;
+}
+
+.edit-profile-modal input:focus {
+  outline: none;
+  border-color: #a78bfa;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+.modal-buttons button {
+  flex: 1;
+  padding: 0.7rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.save-btn {
+  background: linear-gradient(135deg, #a78bfa, #7c3aed);
+  color: white;
+}
+
+.cancel-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+}
+
 /* Chat Container */
 .chat-container {
   flex: 1;
@@ -165,18 +320,44 @@ body {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.menu-toggle, .show-contacts-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 1.2rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.show-contacts-btn {
+  margin-top: 1rem;
+  width: auto;
+  border-radius: 40px;
+  padding: 0.6rem 1.2rem;
+  gap: 8px;
+}
+
 .chat-header img {
   width: 40px;
   height: 40px;
   border-radius: 50%;
 }
 
-.chat-header h3 {
+.chat-header-info {
+  flex: 1;
+}
+
+.chat-header-info h3 {
   font-size: 0.95rem;
   margin-bottom: 2px;
 }
 
-.chat-header p {
+.chat-header-info p {
   font-size: 0.65rem;
   opacity: 0.7;
 }
@@ -261,7 +442,6 @@ body {
   align-self: flex-start;
 }
 
-/* Message Actions (Desktop only - hover) */
 .message-actions {
   position: absolute;
   right: -35px;
@@ -285,7 +465,6 @@ body {
   font-size: 0.7rem;
 }
 
-/* Edit Input */
 .edit-input {
   background: rgba(255,255,255,0.15);
   border: 1px solid #a78bfa;
@@ -313,45 +492,49 @@ body {
   cursor: pointer;
 }
 
-/* Fixed Input Form */
+/* Fixed Input Form - FIXED FOR MOBILE */
 .form {
-  background: rgba(10, 10, 25, 0.8);
+  background: rgba(10, 10, 25, 0.95);
   backdrop-filter: blur(16px);
   padding: 0.8rem 1rem;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 100;
 }
 
 .input {
   flex: 1;
-  padding: 0.7rem 1rem;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 40px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.15);
   color: white;
   outline: none;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 .input::placeholder {
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
 }
 
 .input:focus {
   border-color: #a78bfa;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .send-button {
   background: linear-gradient(135deg, #a78bfa, #7c3aed);
   border: none;
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.1rem;
   transition: transform 0.2s;
+  flex-shrink: 0;
 }
 
 .send-button:hover:not(:disabled) {
@@ -389,7 +572,7 @@ body {
   opacity: 0.7;
 }
 
-/* SignIn Page - Mobile Responsive */
+/* SignIn Page */
 .signin-container {
   display: flex;
   justify-content: center;
@@ -464,10 +647,9 @@ body {
 }
 
 /* ============================================ */
-/* MOBILE RESPONSIVE STYLES (max-width: 768px) */
+/* MOBILE RESPONSIVE STYLES */
 /* ============================================ */
 @media (max-width: 768px) {
-  /* Sidebar becomes slide-out on mobile */
   .users-sidebar {
     position: fixed;
     left: -280px;
@@ -479,17 +661,22 @@ body {
     box-shadow: 2px 0 10px rgba(0,0,0,0.3);
   }
   
-  /* When a user is selected, sidebar hides */
   .users-sidebar.active {
     left: 0;
   }
   
-  /* Show menu button when no contact selected or on mobile */
-  .chat-container {
-    width: 100%;
+  .close-sidebar {
+    display: block;
   }
   
-  /* Message width on mobile */
+  .menu-toggle {
+    display: flex;
+  }
+  
+  .show-contacts-btn {
+    display: inline-flex;
+  }
+  
   .message {
     max-width: 90%;
   }
@@ -507,7 +694,6 @@ body {
     font-size: 0.8rem;
   }
   
-  /* Smaller header on mobile */
   .header {
     padding: 0.6rem 0.9rem;
   }
@@ -521,7 +707,6 @@ body {
     height: calc(100vh - 55px);
   }
   
-  /* Contact list item padding */
   .user-item {
     padding: 0.6rem 0.8rem;
   }
@@ -535,7 +720,6 @@ body {
     font-size: 0.8rem;
   }
   
-  /* Chat header */
   .chat-header {
     padding: 0.6rem 0.8rem;
   }
@@ -545,38 +729,43 @@ body {
     height: 35px;
   }
   
-  .chat-header h3 {
+  .chat-header-info h3 {
     font-size: 0.85rem;
   }
   
-  /* Input form */
+  /* FIXED - Mobile input form */
   .form {
-    padding: 0.6rem 0.8rem;
+    padding: 0.7rem 0.8rem;
+    gap: 8px;
+    background: rgba(10, 10, 25, 0.98);
   }
   
   .input {
-    padding: 0.6rem 0.9rem;
+    padding: 0.7rem 0.9rem;
+    font-size: 0.85rem;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  
+  .input::placeholder {
     font-size: 0.8rem;
   }
   
   .send-button {
-    width: 38px;
-    height: 38px;
-    font-size: 0.9rem;
+    width: 42px;
+    height: 42px;
+    font-size: 1rem;
   }
   
-  /* Message actions - tap on mobile */
   .message-actions {
     display: none;
   }
   
-  /* For mobile, show actions on tap */
   .message:active .message-actions {
     display: flex;
   }
 }
 
-/* Small phones (max-width: 480px) */
+/* Small phones */
 @media (max-width: 480px) {
   .users-sidebar {
     width: 240px;
@@ -605,21 +794,20 @@ body {
   .signin-card h2 {
     font-size: 1.2rem;
   }
-}
-
-/* Add hamburger menu button for mobile (optional) */
-.menu-toggle {
-  display: none;
-  background: transparent;
-  border: none;
-  color: white;
-  font-size: 1.2rem;
-  cursor: pointer;
-  margin-right: 0.5rem;
-}
-
-@media (max-width: 768px) {
-  .menu-toggle {
-    display: block;
+  
+  /* Extra small - input field fix */
+  .form {
+    padding: 0.6rem 0.7rem;
+  }
+  
+  .input {
+    padding: 0.6rem 0.8rem;
+    font-size: 0.8rem;
+  }
+  
+  .send-button {
+    width: 38px;
+    height: 38px;
+    font-size: 0.9rem;
   }
 }
