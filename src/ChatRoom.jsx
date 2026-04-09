@@ -1,9 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { auth, db } from "./firebase";
-<<<<<<< HEAD
-=======
 import { signOut } from "firebase/auth";
->>>>>>> b9efca0cd39f78ddf6610862c4e8c8eb331ec81d
 import {
   collection,
   addDoc,
@@ -11,7 +8,6 @@ import {
   orderBy,
   serverTimestamp,
   onSnapshot,
-<<<<<<< HEAD
   doc,
   updateDoc,
   deleteDoc,
@@ -259,7 +255,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
           )}
         </div>
       </div>
-=======
 } from "firebase/firestore";
 import ChatMessage from "./ChatMessage";
 
@@ -324,7 +319,6 @@ function ChatRoom() {
           🕊️
         </button>
       </form>
->>>>>>> b9efca0cd39f78ddf6610862c4e8c8eb331ec81d
     </div>
   );
 }
