@@ -23,6 +23,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [userStatus, setUserStatus] = useState({});
   const messagesEndRef = useRef(null);
   const currentUser = auth.currentUser;
 
@@ -38,13 +39,25 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
           photoURL: currentUser.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff",
           lastSeen: serverTimestamp()
         }, { merge: true });
-        console.log("✅ User saved:", currentUser.displayName);
       } catch (err) {
         console.error("Error saving user:", err);
       }
     };
     saveCurrentUser();
   }, [currentUser]);
+
+  // Listen to online/offline status of all users
+  useEffect(() => {
+    const presenceRef = collection(db, "presence");
+    const unsubscribe = onSnapshot(presenceRef, (snapshot) => {
+      const status = {};
+      snapshot.docs.forEach(doc => {
+        status[doc.id] = doc.data();
+      });
+      setUserStatus(status);
+    });
+    return unsubscribe;
+  }, []);
 
   // Fetch all users
   useEffect(() => {
@@ -56,7 +69,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
         const usersList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const otherUsers = usersList.filter(u => u.id !== currentUser.uid);
         setUsers(otherUsers);
-        console.log("📋 Other users:", otherUsers.map(u => u.displayName));
       } catch (error) {
         console.error("Error fetching users:", error);
       } finally {
@@ -71,8 +83,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     if (!selectedUser || !currentUser) return;
 
     const chatId = [currentUser.uid, selectedUser.id].sort().join('_');
-    console.log("🔑 ChatId:", chatId);
-
     const q = query(
       collection(db, "private_messages"),
       where("chatId", "==", chatId),
@@ -82,7 +92,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
-      console.log(`📨 ${msgs.length} messages loaded`);
     }, (error) => {
       console.error("Snapshot error:", error);
     });
@@ -97,7 +106,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   const handleSelectUser = (user) => {
     setSelectedUser(user);
     setShowSidebar(false);
-    console.log("Selected user:", user.displayName);
   };
 
   const sendMessage = async (e) => {
@@ -119,7 +127,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
         photoURL: currentUser.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff",
         edited: false
       });
-      console.log("✅ Message sent");
       setFormValue("");
     } catch (err) {
       console.error("Send error:", err);
@@ -152,27 +159,26 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     }
   };
 
+  // Get user status
+  const getUserStatus = (userId) => {
+    const status = userStatus[userId];
+    if (!status) return { text: "offline", isOnline: false };
+    return { text: status.status, isOnline: status.status === "online" };
+  };
+
   if (!currentUser) return null;
 
   return (
     <div className="main-content">
       <div className="chat-layout">
         {showSidebar && (
-          <div 
-            className="sidebar-overlay" 
-            onClick={() => setShowSidebar(false)}
-          ></div>
+          <div className="sidebar-overlay" onClick={() => setShowSidebar(false)}></div>
         )}
         
         <div className={`users-sidebar ${showSidebar ? 'active' : ''}`}>
           <div className="users-header">
             <h3>👥 Contacts ({users.length})</h3>
-            <button 
-              className="close-sidebar"
-              onClick={() => setShowSidebar(false)}
-            >
-              ✕
-            </button>
+            <button className="close-sidebar" onClick={() => setShowSidebar(false)}>✕</button>
           </div>
           <div className="users-list">
             {loadingUsers ? (
@@ -183,25 +189,30 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
             ) : users.length === 0 ? (
               <div className="no-users">
                 <p>😢 No other users yet</p>
-                <small>Sign in with another Google account in a different browser</small>
+                <small>Sign in with another Google account</small>
               </div>
             ) : (
-              users.map((user) => (
-                <div
-                  key={user.id}
-                  className={`user-item ${selectedUser?.id === user.id ? 'active' : ''}`}
-                  onClick={() => handleSelectUser(user)}
-                >
-                  <img 
-                    src={user.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff"} 
-                    alt="avatar" 
-                  />
-                  <div className="user-info">
-                    <div className="user-name">{user.displayName || user.email || "User"}</div>
-                    <div className="user-status">Click to chat</div>
+              users.map((user) => {
+                const status = getUserStatus(user.id);
+                return (
+                  <div
+                    key={user.id}
+                    className={`user-item ${selectedUser?.id === user.id ? 'active' : ''}`}
+                    onClick={() => handleSelectUser(user)}
+                  >
+                    <div className="user-avatar">
+                      <img src={user.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff"} alt="avatar" />
+                      <div className={status.isOnline ? "online-dot" : "offline-dot"}></div>
+                    </div>
+                    <div className="user-info">
+                      <div className="user-name">{user.displayName || user.email || "User"}</div>
+                      <div className={`user-status-text ${status.isOnline ? "online" : "offline"}`}>
+                        {status.isOnline ? "● Online" : "○ Offline"}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -212,29 +223,24 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
               <div className="no-chat-icon">💬</div>
               <h3>Select a contact to start chatting</h3>
               <p>Choose someone from the list to begin private messaging</p>
-              <button 
-                className="show-contacts-btn"
-                onClick={() => setShowSidebar(true)}
-              >
+              <button className="show-contacts-btn" onClick={() => setShowSidebar(true)}>
                 📋 Show Contacts
               </button>
             </div>
           ) : (
             <>
               <div className="chat-header">
-                <button 
-                  className="menu-toggle"
-                  onClick={() => setShowSidebar(true)}
-                >
-                  ☰
-                </button>
-                <img 
-                  src={selectedUser.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff"} 
-                  alt="avatar" 
-                />
+                <button className="menu-toggle" onClick={() => setShowSidebar(true)}>☰</button>
+                <div className="chat-header-avatar">
+                  <img src={selectedUser.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff"} alt="avatar" />
+                  <div className={getUserStatus(selectedUser.id).isOnline ? "online-dot" : "offline-dot"}></div>
+                </div>
                 <div className="chat-header-info">
                   <h3>{selectedUser.displayName || selectedUser.email || "User"}</h3>
-                  <p>Private conversation • Edit/Delete messages</p>
+                  <div className={`chat-status ${getUserStatus(selectedUser.id).isOnline ? "online" : "offline"}`}>
+                    <span className={`status-dot ${getUserStatus(selectedUser.id).isOnline ? "online" : "offline"}`}></span>
+                    {getUserStatus(selectedUser.id).isOnline ? "Online" : "Offline"}
+                  </div>
                 </div>
               </div>
               
@@ -266,11 +272,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
                   disabled={sending}
                   autoComplete="off"
                 />
-                <button
-                  type="submit"
-                  disabled={!formValue.trim() || sending}
-                  className="send-button"
-                >
+                <button type="submit" disabled={!formValue.trim() || sending} className="send-button">
                   {sending ? "⏳" : "➤"}
                 </button>
               </form>

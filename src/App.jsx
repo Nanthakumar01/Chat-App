@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { auth, db } from "./firebase";
 import { signOut, updateProfile } from "firebase/auth";
-import { doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
+import { doc, updateDoc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import SignIn from "./SignIn";
 import ChatRoom from "./ChatRoom";
 
@@ -13,7 +13,43 @@ function App() {
   const [editName, setEditName] = useState("");
   const [displayName, setDisplayName] = useState("");
 
-  // Load user's display name from Firestore
+  // Online/Offline Status
+  useEffect(() => {
+    if (!user) return;
+
+    const userStatusRef = doc(db, "presence", user.uid);
+    
+    // Set user as online when connected
+    const setOnline = async () => {
+      await setDoc(userStatusRef, {
+        status: "online",
+        lastSeen: new Date(),
+        displayName: user.displayName
+      }, { merge: true });
+    };
+    
+    setOnline();
+    
+    // Set user as offline when disconnected
+    const handleBeforeUnload = () => {
+      setDoc(userStatusRef, {
+        status: "offline",
+        lastSeen: new Date()
+      }, { merge: true });
+    };
+    
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    
+    return () => {
+      setDoc(userStatusRef, {
+        status: "offline",
+        lastSeen: new Date()
+      }, { merge: true });
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [user]);
+
+  // Load user's display name
   useEffect(() => {
     const loadUserName = async () => {
       if (user) {
@@ -48,12 +84,10 @@ function App() {
     if (!editName.trim() || !user) return;
     
     try {
-      // 1. Update Firebase Auth displayName
       await updateProfile(auth.currentUser, {
         displayName: editName.trim()
       });
       
-      // 2. Update Firestore users collection
       await setDoc(doc(db, "users", user.uid), {
         id: user.uid,
         displayName: editName.trim(),
@@ -62,12 +96,9 @@ function App() {
         updatedAt: new Date()
       }, { merge: true });
       
-      // 3. Update local state
       setDisplayName(editName.trim());
       setShowProfileModal(false);
       setEditName("");
-      
-      // Show success message
       alert("✅ Name updated successfully!");
       
     } catch (err) {
@@ -80,10 +111,10 @@ function App() {
     <div className="App">
       <header className="header">
         <span>💬 Private Chat App</span>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div className="header-right">
           {user && (
             <>
-              <span style={{ fontSize: '0.8rem', opacity: 0.8 }}>👤 {displayName}</span>
+              <span style={{ fontSize: '0.7rem', opacity: 0.8 }}>👤 {displayName}</span>
               <button 
                 onClick={() => {
                   setEditName(displayName || "");
@@ -91,10 +122,10 @@ function App() {
                 }} 
                 className="profile-button"
               >
-                ✏️ Edit
+                ✏️
               </button>
               <button onClick={() => signOut(auth)} className="signout-button">
-                🚪 Sign Out
+                🚪
               </button>
             </>
           )}
@@ -104,13 +135,12 @@ function App() {
         <ChatRoom 
           selectedUser={selectedUser}
           setSelectedUser={setSelectedUser}
-          currentUserName={displayName}
+          currentUserData={{ uid: user.uid, displayName }}
         />
       ) : (
         <SignIn />
       )}
 
-      {/* Edit Profile Modal */}
       {showProfileModal && (
         <div className="modal-overlay" onClick={() => setShowProfileModal(false)}>
           <div className="edit-profile-modal" onClick={(e) => e.stopPropagation()}>
@@ -121,24 +151,10 @@ function App() {
               onChange={(e) => setEditName(e.target.value)}
               placeholder="Enter your name"
               autoFocus
-              style={{
-                width: '100%',
-                padding: '0.8rem',
-                marginBottom: '1rem',
-                border: '1px solid rgba(255,255,255,0.2)',
-                borderRadius: '12px',
-                background: 'rgba(255,255,255,0.1)',
-                color: 'white',
-                fontSize: '0.9rem'
-              }}
             />
-            <div className="modal-buttons" style={{ display: 'flex', gap: '1rem' }}>
-              <button className="save-btn" onClick={handleUpdateProfile} style={{ flex: 1, padding: '0.7rem', borderRadius: '12px', background: 'linear-gradient(135deg, #a78bfa, #7c3aed)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
-                💾 Save
-              </button>
-              <button className="cancel-btn" onClick={() => setShowProfileModal(false)} style={{ flex: 1, padding: '0.7rem', borderRadius: '12px', background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600' }}>
-                ❌ Cancel
-              </button>
+            <div className="modal-buttons">
+              <button className="save-btn" onClick={handleUpdateProfile}>💾 Save</button>
+              <button className="cancel-btn" onClick={() => setShowProfileModal(false)}>❌ Cancel</button>
             </div>
           </div>
         </div>
