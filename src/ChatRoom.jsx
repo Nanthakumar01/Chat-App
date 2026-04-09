@@ -22,6 +22,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   const [sending, setSending] = useState(false);
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
   const messagesEndRef = useRef(null);
   const currentUser = auth.currentUser;
 
@@ -65,15 +66,12 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     fetchUsers();
   }, [currentUser]);
 
-  // Real-time messages - FIXED chatId logic
+  // Real-time messages
   useEffect(() => {
     if (!selectedUser || !currentUser) return;
 
-    // IMPORTANT: Consistent chatId format (sorted UIDs)
     const chatId = [currentUser.uid, selectedUser.id].sort().join('_');
     console.log("🔑 ChatId:", chatId);
-    console.log("Current user:", currentUser.displayName);
-    console.log("Selected user:", selectedUser.displayName);
 
     const q = query(
       collection(db, "private_messages"),
@@ -84,7 +82,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
-      console.log(`📨 ${msgs.length} messages loaded for chat with ${selectedUser.displayName}`);
+      console.log(`📨 ${msgs.length} messages loaded`);
     }, (error) => {
       console.error("Snapshot error:", error);
     });
@@ -96,17 +94,23 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
+  // Close sidebar when a contact is selected (mobile)
+  const handleSelectUser = (user) => {
+    setSelectedUser(user);
+    setShowSidebar(false); // Auto close sidebar on mobile
+    console.log("Selected user:", user.displayName);
+  };
+
   const sendMessage = async (e) => {
     e.preventDefault();
     const trimmed = formValue.trim();
     if (!trimmed || sending || !selectedUser || !currentUser) return;
 
     setSending(true);
-    // Same chatId format as above
     const chatId = [currentUser.uid, selectedUser.id].sort().join('_');
     
     try {
-      const newMessage = {
+      await addDoc(collection(db, "private_messages"), {
         text: trimmed,
         createdAt: serverTimestamp(),
         uid: currentUser.uid,
@@ -115,10 +119,8 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
         chatId: chatId,
         photoURL: currentUser.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff",
         edited: false
-      };
-      
-      await addDoc(collection(db, "private_messages"), newMessage);
-      console.log("✅ Message sent to:", selectedUser.displayName);
+      });
+      console.log("✅ Message sent");
       setFormValue("");
     } catch (err) {
       console.error("Send error:", err);
@@ -156,14 +158,31 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   return (
     <div className="main-content">
       <div className="chat-layout">
+        {/* Mobile Overlay - closes sidebar when clicking outside */}
+        {showSidebar && (
+          <div 
+            className="sidebar-overlay" 
+            onClick={() => setShowSidebar(false)}
+          ></div>
+        )}
+        
         {/* Users Sidebar */}
-        <div className="users-sidebar">
+        <div className={`users-sidebar ${showSidebar ? 'active' : ''}`}>
           <div className="users-header">
             <h3>👥 Contacts ({users.length})</h3>
+            <button 
+              className="close-sidebar"
+              onClick={() => setShowSidebar(false)}
+            >
+              ✕
+            </button>
           </div>
           <div className="users-list">
             {loadingUsers ? (
-              <div className="loading-users">Loading users...</div>
+              <div className="loading-users">
+                <div className="spinner"></div>
+                <p>Loading users...</p>
+              </div>
             ) : users.length === 0 ? (
               <div className="no-users">
                 <p>😢 No other users yet</p>
@@ -174,10 +193,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
                 <div
                   key={user.id}
                   className={`user-item ${selectedUser?.id === user.id ? 'active' : ''}`}
-                  onClick={() => {
-                    setSelectedUser(user);
-                    console.log("Selected user:", user.displayName);
-                  }}
+                  onClick={() => handleSelectUser(user)}
                 >
                   <img 
                     src={user.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff"} 
@@ -200,15 +216,27 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
               <div className="no-chat-icon">💬</div>
               <h3>Select a contact to start chatting</h3>
               <p>Choose someone from the list to begin private messaging</p>
+              <button 
+                className="show-contacts-btn"
+                onClick={() => setShowSidebar(true)}
+              >
+                📋 Show Contacts
+              </button>
             </div>
           ) : (
             <>
               <div className="chat-header">
+                <button 
+                  className="menu-toggle"
+                  onClick={() => setShowSidebar(true)}
+                >
+                  ☰
+                </button>
                 <img 
                   src={selectedUser.photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff"} 
                   alt="avatar" 
                 />
-                <div>
+                <div className="chat-header-info">
                   <h3>{selectedUser.displayName || selectedUser.email || "User"}</h3>
                   <p>Private conversation • Edit/Delete messages</p>
                 </div>
