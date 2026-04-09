@@ -1,12 +1,14 @@
 import React, { useState } from "react";
-import { auth } from "./firebase";
+import { auth, db } from "./firebase";
+import { doc, updateDoc, deleteDoc } from "firebase/firestore";
 
 function ChatMessage({ message, onEdit, onDelete }) {
-  const { id, text, uid, photoURL, createdAt, edited } = message;
+  const { id, text, uid, photoURL, createdAt, edited, originalText } = message;
   const currentUser = auth.currentUser;
   const messageClass = uid === currentUser?.uid ? "sent" : "received";
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(text);
+  const [showActions, setShowActions] = useState(false);
 
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
@@ -45,6 +47,20 @@ function ChatMessage({ message, onEdit, onDelete }) {
     }
   };
 
+  const handleTouchStart = () => {
+    if (uid === currentUser?.uid) {
+      const timer = setTimeout(() => {
+        const action = window.confirm("Edit message? OK to Edit, Cancel to Delete");
+        if (action) {
+          setIsEditing(true);
+        } else {
+          handleDelete();
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  };
+
   if (isEditing) {
     return (
       <div className={`message ${messageClass} editing`}>
@@ -70,7 +86,8 @@ function ChatMessage({ message, onEdit, onDelete }) {
     <div 
       className={`message ${messageClass}`}
       onContextMenu={handleContextMenu}
-      title={uid === currentUser?.uid ? "Right click / Long press to edit or delete" : ""}
+      onTouchStart={handleTouchStart}
+      title={uid === currentUser?.uid ? "Long press / Right click to edit or delete" : ""}
     >
       <img src={photoURL || "https://ui-avatars.com/api/?background=8b5cf6&color=fff"} alt="avatar" />
       <div className="bubble">
@@ -86,18 +103,6 @@ function ChatMessage({ message, onEdit, onDelete }) {
           <button onClick={handleDelete} className="action-btn" title="Delete">🗑️</button>
         </div>
       )}
-import React from "react";
-import { auth } from "./firebase.jsx";
-
-function ChatMessage({ message }) {
-  const { text, uid, photoURL } = message;
-
-  const messageClass = uid === auth.currentUser.uid ? "sent" : "received";
-
-  return (
-    <div className={`message ${messageClass}`}>
-      <img src={photoURL} alt="avatar" />
-      <p>{text}</p>
     </div>
   );
 }
