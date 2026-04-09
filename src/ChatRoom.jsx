@@ -94,10 +94,9 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
-  // Close sidebar when a contact is selected (mobile)
   const handleSelectUser = (user) => {
     setSelectedUser(user);
-    setShowSidebar(false); // Auto close sidebar on mobile
+    setShowSidebar(false);
     console.log("Selected user:", user.displayName);
   };
 
@@ -158,7 +157,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   return (
     <div className="main-content">
       <div className="chat-layout">
-        {/* Mobile Overlay - closes sidebar when clicking outside */}
         {showSidebar && (
           <div 
             className="sidebar-overlay" 
@@ -166,7 +164,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
           ></div>
         )}
         
-        {/* Users Sidebar */}
         <div className={`users-sidebar ${showSidebar ? 'active' : ''}`}>
           <div className="users-header">
             <h3>👥 Contacts ({users.length})</h3>
@@ -209,7 +206,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
           </div>
         </div>
 
-        {/* Chat Area */}
         <div className="chat-container">
           {!selectedUser ? (
             <div className="no-chat-selected">
