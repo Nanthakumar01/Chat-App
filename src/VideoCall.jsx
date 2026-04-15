@@ -8,14 +8,12 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
   const [error, setError] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [isRemoteVideoActive, setIsRemoteVideoActive] = useState(false);
   
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
   const callStartTimeRef = useRef(null);
-  const pendingCandidatesRef = useRef([]);
   const currentUser = auth.currentUser;
 
   const configuration = {
@@ -24,40 +22,12 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
       { urls: "stun:stun2.l.google.com:19302" },
       { urls: "stun:stun3.l.google.com:19302" },
       { urls: "stun:stun4.l.google.com:19302" },
-      // Add TURN servers for better connectivity
-      { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
-      { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
-    ]
+      { urls: "stun:stun.l.google.com:19302" },
+    ],
+    iceCandidatePoolSize: 10
   };
 
   const callId = [currentUser?.uid, targetUserId].sort().join("_videocall_");
-
-  const candidateToPlain = (candidate) => {
-    if (!candidate) return null;
-    return {
-      candidate: candidate.candidate,
-      sdpMid: candidate.sdpMid,
-      sdpMLineIndex: candidate.sdpMLineIndex,
-      usernameFragment: candidate.usernameFragment
-    };
-  };
-
-  const plainToCandidate = (plain) => {
-    if (!plain) return null;
-    return new RTCIceCandidate(plain);
-  };
-
-  const processPendingCandidates = async (pc) => {
-    while (pendingCandidatesRef.current.length > 0) {
-      const candidate = pendingCandidatesRef.current.shift();
-      try {
-        await pc.addIceCandidate(candidate);
-        console.log("Added pending candidate");
-      } catch (err) {
-        console.error("Error adding pending candidate:", err);
-      }
-    }
-  };
 
   const stopAllTracks = () => {
     if (localStreamRef.current) {
@@ -74,17 +44,14 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
     let isActive = true;
     let unsubscribeCall = null;
     let mounted = true;
+    let heartbeatInterval = null;
 
     const initCall = async () => {
       try {
         console.log("Starting video call...");
         
-        // Request camera and microphone
         const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }, 
+          video: true, 
           audio: true 
         });
         
@@ -99,36 +66,37 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
           console.log("Local video stream attached");
         }
 
-        // Create peer connection
         const pc = new RTCPeerConnection(configuration);
         peerConnectionRef.current = pc;
 
-        // Add all tracks to peer connection
         stream.getTracks().forEach(track => {
           pc.addTrack(track, stream);
           console.log(`Added ${track.kind} track`);
         });
 
-        // Handle incoming remote stream
         pc.ontrack = (event) => {
-          console.log("Received remote track:", event.track.kind);
+          console.log(`Received remote track: ${event.track.kind}`);
           if (remoteVideoRef.current && event.streams[0]) {
             remoteVideoRef.current.srcObject = event.streams[0];
             if (event.track.kind === "video") {
-              setIsRemoteVideoActive(true);
               console.log("Remote video stream attached");
             }
           }
-          if (mounted) setCallStatus("active");
+          if (mounted && callStatus !== "active") {
+            setCallStatus("active");
+            callStartTimeRef.current = Date.now();
+          }
         };
 
-        // ICE candidate handling
         pc.onicecandidate = (event) => {
           if (event.candidate && isActive && mounted) {
             console.log("Sending ICE candidate");
-            const plainCandidate = candidateToPlain(event.candidate);
             updateDoc(doc(db, "videoCalls", callId), {
-              candidate: plainCandidate
+              candidate: {
+                candidate: event.candidate.candidate,
+                sdpMid: event.candidate.sdpMid,
+                sdpMLineIndex: event.candidate.sdpMLineIndex
+              }
             }).catch(console.error);
           }
         };
@@ -136,10 +104,11 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
         pc.oniceconnectionstatechange = () => {
           console.log("ICE connection state:", pc.iceConnectionState);
           if (pc.iceConnectionState === "connected") {
-            console.log("Call connected successfully!");
+            console.log("Call connected!");
             if (mounted) setCallStatus("active");
-          }
-          if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+          } else if (pc.iceConnectionState === "disconnected" || 
+                     pc.iceConnectionState === "failed" || 
+                     pc.iceConnectionState === "closed") {
             console.log("Call disconnected");
             if (mounted) setCallStatus("ended");
             setTimeout(() => {
@@ -148,22 +117,24 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
           }
         };
 
-        pc.onsignalingstatechange = () => {
-          console.log("Signaling state:", pc.signalingState);
-          if ((pc.signalingState === "stable") && mounted) {
-            processPendingCandidates(pc);
+        pc.onconnectionstatechange = () => {
+          console.log("Connection state:", pc.connectionState);
+          if (pc.connectionState === "connected") {
+            console.log("Fully connected!");
+          } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+            if (mounted) setCallStatus("ended");
           }
         };
 
-        pc.onconnectionstatechange = () => {
-          console.log("Connection state:", pc.connectionState);
+        pc.onsignalingstatechange = () => {
+          console.log("Signaling state:", pc.signalingState);
         };
 
-        // Check if call document exists
+        // Check if call exists
         const callDoc = await getDoc(doc(db, "videoCalls", callId));
         
         if (!callDoc.exists()) {
-          // Caller: Create offer
+          // Caller
           console.log("Creating offer as caller...");
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -180,7 +151,7 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
           if (mounted) setCallStatus("ringing");
           console.log("Offer created and saved");
         } else {
-          // Callee: Check for existing offer
+          // Callee
           const data = callDoc.data();
           if (data.offer && !pc.currentRemoteDescription) {
             console.log("Processing offer as callee...");
@@ -196,7 +167,7 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
           }
         }
 
-        // Listen for signaling data
+        // Listen for signaling updates
         unsubscribeCall = onSnapshot(doc(db, "videoCalls", callId), async (snapshot) => {
           if (!snapshot.exists() || !isActive || !mounted) return;
           const data = snapshot.data();
@@ -211,7 +182,7 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
           }
 
           // Handle answer (for caller)
-          if (data.answer && pc.signalingState !== "stable" && !pc.currentRemoteDescription) {
+          if (data.answer && !pc.currentRemoteDescription && pc.signalingState === "have-local-offer") {
             console.log("Received answer, setting remote description");
             const answer = new RTCSessionDescription(data.answer);
             await pc.setRemoteDescription(answer);
@@ -219,38 +190,45 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
               setCallStatus("active");
               callStartTimeRef.current = Date.now();
             }
-            await processPendingCandidates(pc);
           }
 
           // Handle ICE candidates
-          if (data.candidate) {
+          if (data.candidate && pc.currentRemoteDescription) {
             try {
-              const candidate = plainToCandidate(data.candidate);
-              if (candidate) {
-                if (pc.currentRemoteDescription) {
-                  await pc.addIceCandidate(candidate);
-                  console.log("ICE candidate added");
-                } else {
-                  pendingCandidatesRef.current.push(candidate);
-                  console.log("ICE candidate queued");
-                }
-              }
+              const candidate = new RTCIceCandidate(data.candidate);
+              await pc.addIceCandidate(candidate);
+              console.log("ICE candidate added");
             } catch (err) {
               console.error("ICE candidate error:", err);
             }
           }
         });
 
+        // Heartbeat to keep call alive
+        heartbeatInterval = setInterval(async () => {
+          if (isActive && mounted && peerConnectionRef.current) {
+            const stats = await peerConnectionRef.current.getStats();
+            let hasActiveConnection = false;
+            stats.forEach(stat => {
+              if (stat.type === "candidate-pair" && stat.state === "succeeded") {
+                hasActiveConnection = true;
+              }
+            });
+            if (!hasActiveConnection && callStatus === "active") {
+              console.log("No active connection, ending call");
+              setCallStatus("ended");
+            }
+          }
+        }, 5000);
+
       } catch (err) {
         console.error("Video call error:", err);
         if (err.name === "NotAllowedError") {
-          setError("Camera/Microphone permission denied. Please allow access.");
+          setError("Camera/Microphone permission denied");
         } else if (err.name === "NotFoundError") {
-          setError("No camera or microphone found on your device.");
-        } else if (err.name === "NotReadableError") {
-          setError("Camera/Microphone is in use by another application.");
+          setError("No camera/microphone found");
         } else {
-          setError(err.message || "Failed to start video call");
+          setError(err.message);
         }
         setCallStatus("ended");
         stopAllTracks();
@@ -269,6 +247,7 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
       mounted = false;
       isActive = false;
       clearInterval(timer);
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
       if (unsubscribeCall) unsubscribeCall();
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
@@ -337,36 +316,19 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
             {callStatus === "ended" && "📞 Call ended"}
             {callStatus === "connecting" && "🔌 Connecting..."}
           </p>
-          {!isRemoteVideoActive && callStatus === "active" && (
-            <p style={{ fontSize: "0.7rem", color: "#ffaa00" }}>Waiting for remote video...</p>
-          )}
         </div>
         <button className="close-call-btn" onClick={endCall}>✕</button>
       </div>
 
       <div className="video-container">
-        <video 
-          ref={remoteVideoRef} 
-          className="remote-video" 
-          autoPlay 
-          playsInline 
-          style={{ backgroundColor: "#1a1a2e" }}
-        />
-        <video 
-          ref={localVideoRef} 
-          className="local-video" 
-          autoPlay 
-          playsInline 
-          muted 
-        />
+        <video ref={remoteVideoRef} className="remote-video" autoPlay playsInline />
+        <video ref={localVideoRef} className="local-video" autoPlay playsInline muted />
       </div>
 
       {error && (
         <div className="call-error">
           <p>❌ {error}</p>
-          <button className="retry-btn" onClick={() => window.location.reload()}>
-            🔄 Retry
-          </button>
+          <button className="retry-btn" onClick={endCall}>Close</button>
         </div>
       )}
 
@@ -377,9 +339,7 @@ function SimpleVideoCall({ targetUserId, selectedUser, onClose }) {
         <button className={`control-btn ${isMuted ? 'off' : 'on'}`} onClick={toggleMic}>
           {isMuted ? "🎙️❌" : "🎙️"}
         </button>
-        <button className="end-call-btn" onClick={endCall}>
-          📞 End Call
-        </button>
+        <button className="end-call-btn" onClick={endCall}>📞 End Call</button>
       </div>
     </div>
   );
