@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { auth, db } from "./firebase";
-import VideoCall from "./VideoCall";
-import VoiceCall from "./VoiceCall";
-import {
+import { 
   collection,
   addDoc,
   query,
@@ -14,9 +12,13 @@ import {
   deleteDoc,
   where,
   getDocs,
-  setDoc
+  setDoc,
+  getDoc
 } from "firebase/firestore";
 import ChatMessage from "./ChatMessage";
+import SimpleVideoCall from "./VideoCall";
+import SimpleVoiceCall from "./VoiceCall";
+import CallNotification from "./CallNotification";
 
 function ChatRoom({ selectedUser, setSelectedUser }) {
   const [messages, setMessages] = useState([]);
@@ -28,8 +30,13 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   const [userStatus, setUserStatus] = useState({});
   const [showVideoCall, setShowVideoCall] = useState(false);
   const [showVoiceCall, setShowVoiceCall] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [incomingCallType, setIncomingCallType] = useState(null);
+  const [activeCall, setActiveCall] = useState(null);
+  const [activeCallType, setActiveCallType] = useState(null);
   const messagesEndRef = useRef(null);
   const currentUser = auth.currentUser;
+  const ringtoneRef = useRef(null);
 
   // Save current user to Firestore
   useEffect(() => {
@@ -102,6 +109,74 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     return unsubscribe;
   }, [selectedUser, currentUser]);
 
+  // Listen for incoming calls
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Listen for video calls
+    const videoCallsQuery = query(
+      collection(db, "videoCalls"),
+      where("calleeId", "==", currentUser.uid),
+      where("status", "==", "ringing")
+    );
+
+    const unsubscribeVideo = onSnapshot(videoCallsQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const callData = change.doc.data();
+          setIncomingCall({
+            callId: change.doc.id,
+            callerId: callData.callerId,
+            callerName: callData.callerName,
+          });
+          setIncomingCallType("video");
+          
+          // Play ringtone
+          if (ringtoneRef.current) {
+            ringtoneRef.current.loop = true;
+            ringtoneRef.current.play().catch(e => console.log("Audio play failed:", e));
+          }
+        }
+      });
+    });
+
+    // Listen for voice calls
+    const voiceCallsQuery = query(
+      collection(db, "voiceCalls"),
+      where("calleeId", "==", currentUser.uid),
+      where("status", "==", "ringing")
+    );
+
+    const unsubscribeVoice = onSnapshot(voiceCallsQuery, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const callData = change.doc.data();
+          setIncomingCall({
+            callId: change.doc.id,
+            callerId: callData.callerId,
+            callerName: callData.callerName,
+          });
+          setIncomingCallType("voice");
+          
+          // Play ringtone
+          if (ringtoneRef.current) {
+            ringtoneRef.current.loop = true;
+            ringtoneRef.current.play().catch(e => console.log("Audio play failed:", e));
+          }
+        }
+      });
+    });
+
+    return () => {
+      unsubscribeVideo();
+      unsubscribeVoice();
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current.currentTime = 0;
+      }
+    };
+  }, [currentUser]);
+
   // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -171,20 +246,81 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   };
 
   // Call functions
-  const startVideoCall = () => {
+  const startVideoCall = async () => {
     if (!selectedUser) return;
-    setShowVideoCall(true);
+    
+    const callId = [currentUser.uid, selectedUser.id].sort().join("_videocall_");
+    
+    // Check if already in a call
+    const existingCall = await getDoc(doc(db, "videoCalls", callId));
+    if (existingCall.exists() && existingCall.data().status === "active") {
+      alert("Already in a call with this user");
+      return;
+    }
+    
+    setActiveCall({ callerId: currentUser.uid, calleeId: selectedUser.id });
+    setActiveCallType("video");
   };
 
-  const startVoiceCall = () => {
+  const startVoiceCall = async () => {
     if (!selectedUser) return;
-    setShowVoiceCall(true);
+    
+    const callId = [currentUser.uid, selectedUser.id].sort().join("_voicecall_");
+    
+    const existingCall = await getDoc(doc(db, "voiceCalls", callId));
+    if (existingCall.exists() && existingCall.data().status === "active") {
+      alert("Already in a call with this user");
+      return;
+    }
+    
+    setActiveCall({ callerId: currentUser.uid, calleeId: selectedUser.id });
+    setActiveCallType("voice");
+  };
+
+  const acceptCall = async () => {
+    // Stop ringtone
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+    
+    // Find the caller user object
+    const callerUser = users.find(u => u.id === incomingCall.callerId);
+    
+    setActiveCall(incomingCall);
+    setActiveCallType(incomingCallType);
+    setIncomingCall(null);
+  };
+
+  const rejectCall = async () => {
+    // Stop ringtone
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+    
+    // Update call status to rejected
+    const callRef = doc(db, incomingCallType === "video" ? "videoCalls" : "voiceCalls", incomingCall.callId);
+    await updateDoc(callRef, {
+      status: "rejected",
+      endedAt: new Date()
+    });
+    
+    setIncomingCall(null);
+  };
+
+  const closeCall = () => {
+    setActiveCall(null);
+    setActiveCallType(null);
   };
 
   if (!currentUser) return null;
 
   return (
     <div className="main-content">
+      {/* Hidden audio element for ringtone */}
+      <audio ref={ringtoneRef} src="/ringtone.mp3" preload="auto" />
+      
       <div className="chat-layout">
         {showSidebar && (
           <div className="sidebar-overlay" onClick={() => setShowSidebar(false)}></div>
@@ -312,21 +448,31 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
         </div>
       </div>
 
-      {/* Video Call Component */}
-      {showVideoCall && (
-        <VideoCall 
-          targetUserId={selectedUser?.id}
-          selectedUser={selectedUser}
-          onClose={() => setShowVideoCall(false)}
+      {/* Incoming Call Notification */}
+      {incomingCall && (
+        <CallNotification
+          callerName={incomingCall.callerName}
+          callType={incomingCallType}
+          onAccept={acceptCall}
+          onReject={rejectCall}
         />
       )}
 
-      {/* Voice Call Component */}
-      {showVoiceCall && (
-        <VoiceCall 
-          targetUserId={selectedUser?.id}
-          selectedUser={selectedUser}
-          onClose={() => setShowVoiceCall(false)}
+      {/* Active Video Call */}
+      {activeCall && activeCallType === "video" && (
+        <SimpleVideoCall
+          targetUserId={activeCall.callerId === currentUser.uid ? activeCall.calleeId : activeCall.callerId}
+          selectedUser={selectedUser || { displayName: activeCall.callerName }}
+          onClose={closeCall}
+        />
+      )}
+
+      {/* Active Voice Call */}
+      {activeCall && activeCallType === "voice" && (
+        <SimpleVoiceCall
+          targetUserId={activeCall.callerId === currentUser.uid ? activeCall.calleeId : activeCall.callerId}
+          selectedUser={selectedUser || { displayName: activeCall.callerName }}
+          onClose={closeCall}
         />
       )}
     </div>
