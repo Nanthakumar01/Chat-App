@@ -19,6 +19,7 @@ import ChatMessage from "./ChatMessage";
 import SimpleVideoCall from "./VideoCall";
 import SimpleVoiceCall from "./VoiceCall";
 import CallNotification from "./CallNotification";
+import { playRingtone, stopRingtone } from "./ringtone";
 
 function ChatRoom({ selectedUser, setSelectedUser }) {
   const [messages, setMessages] = useState([]);
@@ -36,7 +37,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   const [activeCallType, setActiveCallType] = useState(null);
   const messagesEndRef = useRef(null);
   const currentUser = auth.currentUser;
-  const ringtoneRef = useRef(null);
 
   // Save current user to Firestore
   useEffect(() => {
@@ -57,7 +57,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     saveCurrentUser();
   }, [currentUser]);
 
-  // Listen to online/offline status of all users
+  // Listen to online/offline status
   useEffect(() => {
     const presenceRef = collection(db, "presence");
     const unsubscribe = onSnapshot(presenceRef, (snapshot) => {
@@ -113,7 +113,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   useEffect(() => {
     if (!currentUser) return;
 
-    // Listen for video calls
     const videoCallsQuery = query(
       collection(db, "videoCalls"),
       where("calleeId", "==", currentUser.uid),
@@ -130,17 +129,11 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
             callerName: callData.callerName,
           });
           setIncomingCallType("video");
-          
-          // Play ringtone
-          if (ringtoneRef.current) {
-            ringtoneRef.current.loop = true;
-            ringtoneRef.current.play().catch(e => console.log("Audio play failed:", e));
-          }
+          playRingtone();
         }
       });
     });
 
-    // Listen for voice calls
     const voiceCallsQuery = query(
       collection(db, "voiceCalls"),
       where("calleeId", "==", currentUser.uid),
@@ -157,12 +150,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
             callerName: callData.callerName,
           });
           setIncomingCallType("voice");
-          
-          // Play ringtone
-          if (ringtoneRef.current) {
-            ringtoneRef.current.loop = true;
-            ringtoneRef.current.play().catch(e => console.log("Audio play failed:", e));
-          }
+          playRingtone();
         }
       });
     });
@@ -170,10 +158,7 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     return () => {
       unsubscribeVideo();
       unsubscribeVoice();
-      if (ringtoneRef.current) {
-        ringtoneRef.current.pause();
-        ringtoneRef.current.currentTime = 0;
-      }
+      stopRingtone();
     };
   }, [currentUser]);
 
@@ -238,74 +223,51 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     }
   };
 
-  // Get user status
   const getUserStatus = (userId) => {
     const status = userStatus[userId];
     if (!status) return { text: "offline", isOnline: false };
     return { text: status.status, isOnline: status.status === "online" };
   };
 
-  // Call functions
   const startVideoCall = async () => {
     if (!selectedUser) return;
-    
     const callId = [currentUser.uid, selectedUser.id].sort().join("_videocall_");
-    
-    // Check if already in a call
     const existingCall = await getDoc(doc(db, "videoCalls", callId));
     if (existingCall.exists() && existingCall.data().status === "active") {
       alert("Already in a call with this user");
       return;
     }
-    
     setActiveCall({ callerId: currentUser.uid, calleeId: selectedUser.id });
     setActiveCallType("video");
   };
 
   const startVoiceCall = async () => {
     if (!selectedUser) return;
-    
     const callId = [currentUser.uid, selectedUser.id].sort().join("_voicecall_");
-    
     const existingCall = await getDoc(doc(db, "voiceCalls", callId));
     if (existingCall.exists() && existingCall.data().status === "active") {
       alert("Already in a call with this user");
       return;
     }
-    
     setActiveCall({ callerId: currentUser.uid, calleeId: selectedUser.id });
     setActiveCallType("voice");
   };
 
   const acceptCall = async () => {
-    // Stop ringtone
-    if (ringtoneRef.current) {
-      ringtoneRef.current.pause();
-      ringtoneRef.current.currentTime = 0;
-    }
-    
-    // Find the caller user object
+    stopRingtone();
     const callerUser = users.find(u => u.id === incomingCall.callerId);
-    
     setActiveCall(incomingCall);
     setActiveCallType(incomingCallType);
     setIncomingCall(null);
   };
 
   const rejectCall = async () => {
-    // Stop ringtone
-    if (ringtoneRef.current) {
-      ringtoneRef.current.pause();
-      ringtoneRef.current.currentTime = 0;
-    }
-    
-    // Update call status to rejected
+    stopRingtone();
     const callRef = doc(db, incomingCallType === "video" ? "videoCalls" : "voiceCalls", incomingCall.callId);
     await updateDoc(callRef, {
       status: "rejected",
       endedAt: new Date()
     });
-    
     setIncomingCall(null);
   };
 
@@ -318,9 +280,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
 
   return (
     <div className="main-content">
-      {/* Hidden audio element for ringtone */}
-      <audio ref={ringtoneRef} src="/ringtone.mp3" preload="auto" />
-      
       <div className="chat-layout">
         {showSidebar && (
           <div className="sidebar-overlay" onClick={() => setShowSidebar(false)}></div>
@@ -394,20 +353,8 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
                   </div>
                 </div>
                 <div className="call-buttons">
-                  <button 
-                    className="call-btn video-call-btn" 
-                    onClick={startVideoCall} 
-                    title="Video Call"
-                  >
-                    📹
-                  </button>
-                  <button 
-                    className="call-btn voice-call-btn" 
-                    onClick={startVoiceCall} 
-                    title="Voice Call"
-                  >
-                    🎙️
-                  </button>
+                  <button className="call-btn video-call-btn" onClick={startVideoCall} title="Video Call">📹</button>
+                  <button className="call-btn voice-call-btn" onClick={startVoiceCall} title="Voice Call">🎙️</button>
                 </div>
               </div>
               
@@ -448,7 +395,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
         </div>
       </div>
 
-      {/* Incoming Call Notification */}
       {incomingCall && (
         <CallNotification
           callerName={incomingCall.callerName}
@@ -458,7 +404,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
         />
       )}
 
-      {/* Active Video Call */}
       {activeCall && activeCallType === "video" && (
         <SimpleVideoCall
           targetUserId={activeCall.callerId === currentUser.uid ? activeCall.calleeId : activeCall.callerId}
@@ -467,7 +412,6 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
         />
       )}
 
-      {/* Active Voice Call */}
       {activeCall && activeCallType === "voice" && (
         <SimpleVoiceCall
           targetUserId={activeCall.callerId === currentUser.uid ? activeCall.calleeId : activeCall.callerId}

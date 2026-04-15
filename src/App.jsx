@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 import { auth, db } from "./firebase";
 import { signOut, updateProfile } from "firebase/auth";
-import { doc, updateDoc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 import SignIn from "./SignIn";
 import ChatRoom from "./ChatRoom";
 
@@ -12,6 +12,15 @@ function App() {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [editName, setEditName] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [authReady, setAuthReady] = useState(false);
+
+  // Wait for auth to be ready
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setAuthReady(true);
+    });
+    return unsubscribe;
+  }, []);
 
   // Online/Offline Status
   useEffect(() => {
@@ -19,23 +28,26 @@ function App() {
 
     const userStatusRef = doc(db, "presence", user.uid);
     
-    // Set user as online when connected
     const setOnline = async () => {
-      await setDoc(userStatusRef, {
-        status: "online",
-        lastSeen: new Date(),
-        displayName: user.displayName
-      }, { merge: true });
+      try {
+        await setDoc(userStatusRef, {
+          status: "online",
+          lastSeen: new Date(),
+          displayName: user.displayName
+        }, { merge: true });
+        console.log("✅ User online status set");
+      } catch (err) {
+        console.error("Error setting online status:", err);
+      }
     };
     
     setOnline();
     
-    // Set user as offline when disconnected
     const handleBeforeUnload = () => {
       setDoc(userStatusRef, {
         status: "offline",
         lastSeen: new Date()
-      }, { merge: true });
+      }, { merge: true }).catch(console.error);
     };
     
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -44,7 +56,7 @@ function App() {
       setDoc(userStatusRef, {
         status: "offline",
         lastSeen: new Date()
-      }, { merge: true });
+      }, { merge: true }).catch(console.error);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [user]);
@@ -70,7 +82,7 @@ function App() {
     loadUserName();
   }, [user]);
 
-  if (loading) {
+  if (loading || !authReady) {
     return (
       <div className="loading">
         <div className="spinner" style={{ margin: '0 auto 12px', width: '32px', height: '32px', borderTopColor: '#a78bfa' }}></div>
@@ -135,7 +147,6 @@ function App() {
         <ChatRoom 
           selectedUser={selectedUser}
           setSelectedUser={setSelectedUser}
-          currentUserData={{ uid: user.uid, displayName }}
         />
       ) : (
         <SignIn />
