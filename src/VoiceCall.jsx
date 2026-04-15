@@ -7,6 +7,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
   const [callDuration, setCallDuration] = useState(0);
   const [error, setError] = useState(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [speakerVolume, setSpeakerVolume] = useState(1);
   
   const localAudioRef = useRef(null);
   const remoteAudioRef = useRef(null);
@@ -71,15 +72,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
 
     const initCall = async () => {
       try {
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const hasMic = devices.some(device => device.kind === "audioinput");
-        
-        if (!hasMic) {
-          setError("No microphone found on your device");
-          setCallStatus("ended");
-          return;
-        }
-
+        // Request microphone access
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         
         if (!isActive || !mounted) {
@@ -90,24 +83,34 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
         localStreamRef.current = stream;
         if (localAudioRef.current) {
           localAudioRef.current.srcObject = stream;
+          // Unmute local audio
+          localAudioRef.current.muted = false;
         }
 
         const pc = new RTCPeerConnection(configuration);
         peerConnectionRef.current = pc;
 
+        // Add tracks to peer connection
         stream.getTracks().forEach(track => {
           if (track.readyState === "live") {
             pc.addTrack(track, stream);
           }
         });
 
+        // Handle incoming remote stream
         pc.ontrack = (event) => {
+          console.log("Received remote stream");
           if (remoteAudioRef.current && event.streams[0] && mounted) {
             remoteAudioRef.current.srcObject = event.streams[0];
+            // Set volume
+            remoteAudioRef.current.volume = speakerVolume;
+            // Play remote audio
+            remoteAudioRef.current.play().catch(e => console.log("Auto-play error:", e));
           }
           if (mounted) setCallStatus("active");
         };
 
+        // ICE candidate handling
         pc.onicecandidate = (event) => {
           if (event.candidate && isActive && mounted) {
             const plainCandidate = candidateToPlain(event.candidate);
@@ -118,6 +121,11 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
         };
 
         pc.oniceconnectionstatechange = () => {
+          console.log("ICE connection state:", pc.iceConnectionState);
+          if (pc.iceConnectionState === "connected") {
+            console.log("Call connected!");
+            if (mounted) setCallStatus("active");
+          }
           if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
             if (mounted) setCallStatus("ended");
             setTimeout(() => {
@@ -127,16 +135,20 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
         };
 
         pc.onsignalingstatechange = () => {
+          console.log("Signaling state:", pc.signalingState);
           if ((pc.signalingState === "stable" || pc.signalingState === "have-local-offer") && mounted) {
             processPendingCandidates(pc);
           }
         };
 
+        // Check if call document exists
         const callDoc = await getDoc(doc(db, "voiceCalls", callId));
         
         if (!callDoc.exists()) {
+          // Caller: Create offer
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
+          
           await setDoc(doc(db, "voiceCalls", callId), {
             callId,
             callerId: currentUser.uid,
@@ -148,6 +160,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
           });
           if (mounted) setCallStatus("ringing");
         } else {
+          // Callee: Check for existing offer
           const data = callDoc.data();
           if (data.offer && !pc.currentRemoteDescription) {
             const offer = new RTCSessionDescription(data.offer);
@@ -161,6 +174,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
           }
         }
 
+        // Listen for signaling data
         unsubscribeCall = onSnapshot(doc(db, "voiceCalls", callId), async (snapshot) => {
           if (!snapshot.exists() || !isActive || !mounted) return;
           const data = snapshot.data();
@@ -173,6 +187,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
             return;
           }
 
+          // Handle answer (for caller)
           if (data.answer && pc.signalingState !== "stable" && !pc.currentRemoteDescription) {
             const answer = new RTCSessionDescription(data.answer);
             await pc.setRemoteDescription(answer);
@@ -183,6 +198,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
             await processPendingCandidates(pc);
           }
 
+          // Handle ICE candidates
           if (data.candidate) {
             try {
               const candidate = plainToCandidate(data.candidate);
@@ -206,7 +222,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
         } else if (err.name === "NotFoundError") {
           setError("No microphone found on your device.");
         } else if (err.name === "NotReadableError") {
-          setError("Microphone is in use by another application. Please close other apps using mic.");
+          setError("Microphone is in use by another application.");
         } else {
           setError(err.message || "Failed to start voice call");
         }
@@ -274,6 +290,14 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
     }
   };
 
+  const adjustVolume = (e) => {
+    const volume = parseFloat(e.target.value);
+    setSpeakerVolume(volume);
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.volume = volume;
+    }
+  };
+
   return (
     <div className="voice-call-container">
       <div className="call-header">
@@ -287,6 +311,7 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
               {callStatus === "ringing" && "📞 Ringing..."}
               {callStatus === "active" && `🎙️ Call in progress • ${formatDuration(callDuration)}`}
               {callStatus === "connecting" && "🔌 Connecting..."}
+              {callStatus === "ended" && "📞 Call ended"}
             </p>
           </div>
         </div>
@@ -294,8 +319,17 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
       </div>
 
       <div className="call-controls">
-        <audio ref={localAudioRef} autoPlay muted />
-        <audio ref={remoteAudioRef} autoPlay />
+        <audio 
+          ref={localAudioRef} 
+          autoPlay 
+          muted 
+        />
+        <audio 
+          ref={remoteAudioRef} 
+          autoPlay 
+          controls={false}
+          style={{ display: 'none' }}
+        />
         
         {error && (
           <div className="call-error">
@@ -303,15 +337,29 @@ function SimpleVoiceCall({ targetUserId, selectedUser, onClose }) {
             <button className="retry-btn" onClick={() => window.location.reload()}>
               🔄 Retry
             </button>
-            <button className="close-error-btn" onClick={endCall}>Close</button>
           </div>
         )}
+        
+        <div className="volume-control">
+          <span>🔊</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value={speakerVolume}
+            onChange={adjustVolume}
+            className="volume-slider"
+          />
+        </div>
         
         <div className="call-actions">
           <button className={`control-btn ${isMuted ? 'off' : 'on'}`} onClick={toggleMic}>
             {isMuted ? "🎙️❌" : "🎙️"}
           </button>
-          <button className="end-call-btn" onClick={endCall}>📞 End Call</button>
+          <button className="end-call-btn" onClick={endCall}>
+            📞 End Call
+          </button>
         </div>
       </div>
     </div>
