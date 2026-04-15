@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { auth, db } from "./firebase";
+import VideoCall from "./VideoCall";
+import VoiceCall from "./VoiceCall";
 import {
   collection,
   addDoc,
@@ -24,6 +26,8 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [showSidebar, setShowSidebar] = useState(false);
   const [userStatus, setUserStatus] = useState({});
+  const [showVideoCall, setShowVideoCall] = useState(false);
+  const [showVoiceCall, setShowVoiceCall] = useState(false);
   const messagesEndRef = useRef(null);
   const currentUser = auth.currentUser;
 
@@ -166,6 +170,17 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
     return { text: status.status, isOnline: status.status === "online" };
   };
 
+  // Call functions
+  const startVideoCall = () => {
+    if (!selectedUser) return;
+    setShowVideoCall(true);
+  };
+
+  const startVoiceCall = () => {
+    if (!selectedUser) return;
+    setShowVoiceCall(true);
+  };
+
   if (!currentUser) return null;
 
   return (
@@ -242,6 +257,22 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
                     {getUserStatus(selectedUser.id).isOnline ? "Online" : "Offline"}
                   </div>
                 </div>
+                <div className="call-buttons">
+                  <button 
+                    className="call-btn video-call-btn" 
+                    onClick={startVideoCall} 
+                    title="Video Call"
+                  >
+                    📹
+                  </button>
+                  <button 
+                    className="call-btn voice-call-btn" 
+                    onClick={startVoiceCall} 
+                    title="Voice Call"
+                  >
+                    🎙️
+                  </button>
+                </div>
               </div>
               
               <div className="messages">
@@ -280,6 +311,24 @@ function ChatRoom({ selectedUser, setSelectedUser }) {
           )}
         </div>
       </div>
+
+      {/* Video Call Component */}
+      {showVideoCall && (
+        <VideoCall 
+          targetUserId={selectedUser?.id}
+          selectedUser={selectedUser}
+          onClose={() => setShowVideoCall(false)}
+        />
+      )}
+
+      {/* Voice Call Component */}
+      {showVoiceCall && (
+        <VoiceCall 
+          targetUserId={selectedUser?.id}
+          selectedUser={selectedUser}
+          onClose={() => setShowVoiceCall(false)}
+        />
+      )}
     </div>
   );
 }
